@@ -25,7 +25,9 @@ const App = () => {
   const [error, setError] = useState<string | null>(null);
 
   const handleAnalyze = async () => {
-    if (!schematicFile) return;
+    // Validation check inside handler as backup
+    if (viewMode !== 'CODE_GEN' && !schematicFile) return;
+    if (viewMode === 'CODE_GEN' && !schematicFile && !pinMapping.trim()) return;
 
     setAppState(AppState.ANALYZING);
     setError(null);
@@ -35,6 +37,7 @@ const App = () => {
 
     try {
       if (viewMode === 'AUDIT') {
+        if (!schematicFile) throw new Error("Schematic is required for Audit");
         const data = await analyzeSchematic(
           schematicFile.base64,
           schematicFile.file.type,
@@ -51,6 +54,7 @@ const App = () => {
           setAppState(AppState.SUCCESS);
         }
       } else if (viewMode === 'BOM') {
+        if (!schematicFile) throw new Error("Schematic is required for BOM");
         const data = await generateBOM(
             schematicFile.base64,
             schematicFile.file.type
@@ -59,8 +63,8 @@ const App = () => {
         setAppState(AppState.SUCCESS);
       } else if (viewMode === 'CODE_GEN') {
         const data = await generateFirmware(
-            schematicFile.base64,
-            schematicFile.file.type,
+            schematicFile ? schematicFile.base64 : null,
+            schematicFile ? schematicFile.file.type : null,
             additionalNotes,
             pinMapping
         );
@@ -70,7 +74,7 @@ const App = () => {
 
     } catch (err: any) {
       console.error(err);
-      setError("Failed to process the schematic. Please ensure the file is clear and readable.");
+      setError("Failed to process the request. Please ensure inputs are valid.");
       setAppState(AppState.ERROR);
     }
   };
@@ -93,8 +97,14 @@ const App = () => {
       setError(null);
   };
 
-  // Part Number is optional
-  const isFormValid = !!schematicFile;
+  // Logic: Schematic is mandatory for AUDIT/BOM. 
+  // For CODE_GEN, it is optional IF pinMapping is provided.
+  const isFormValid = (() => {
+      if (viewMode === 'CODE_GEN') {
+          return !!schematicFile || pinMapping.trim().length > 0;
+      }
+      return !!schematicFile;
+  })();
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 pb-20">
@@ -175,7 +185,7 @@ const App = () => {
               <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                 <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
                   <span className="bg-gray-100 w-6 h-6 flex items-center justify-center rounded-full text-xs text-gray-600">1</span>
-                  Upload Schematic
+                  {viewMode === 'CODE_GEN' ? 'Upload Schematic (Optional)' : 'Upload Schematic'}
                 </h3>
                 <FileUpload 
                   id="schematic-upload"
@@ -193,7 +203,7 @@ const App = () => {
                   <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
                       <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
                           <span className="bg-gray-100 w-6 h-6 flex items-center justify-center rounded-full text-xs text-gray-600">2</span>
-                          Configuration <span className="text-gray-400 font-normal text-sm ml-2">(Optional)</span>
+                          Configuration
                       </h3>
                       
                       {viewMode === 'AUDIT' && (
@@ -213,16 +223,16 @@ const App = () => {
                       {viewMode === 'CODE_GEN' && (
                         <div className="mb-4">
                             <label className="block text-sm font-medium text-gray-700 mb-1">
-                                Manual Pin Connections
+                                Manual Pin Connections {schematicFile ? '(Overrides Schematic)' : '(Required if no Schematic)'}
                             </label>
                             <textarea
-                                className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none min-h-[80px] font-mono bg-slate-50"
-                                placeholder={"Enter connections explicitly if needed:\n\nLED_STATUS -> PA5\nBUTTON -> PC13\nSENSORS -> I2C1 (PB6, PB7)"}
+                                className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none min-h-[120px] font-mono bg-slate-50"
+                                placeholder={"Enter connections explicitly:\n\nMCU: STM32F103\nLED_STATUS -> PA5\nBUTTON -> PC13\nSENSORS -> I2C1 (PB6, PB7)\nUART_DEBUG -> USART1 (PA9, PA10)"}
                                 value={pinMapping}
                                 onChange={(e) => setPinMapping(e.target.value)}
                             />
                             <p className="text-xs text-gray-500 mt-1">
-                                These manual connections will override the AI's visual analysis of the schematic.
+                                Enter the pinout configuration here to generate code without a schematic.
                             </p>
                         </div>
                       )}

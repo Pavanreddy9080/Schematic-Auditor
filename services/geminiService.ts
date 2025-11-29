@@ -469,27 +469,32 @@ export const searchPart = async (
 };
 
 export const generateFirmware = async (
-  schematicBase64: string,
-  schematicMime: string,
+  schematicBase64: string | null,
+  schematicMime: string | null,
   additionalNotes: string,
   pinMapping: string
 ): Promise<CodeResult> => {
+  
+  const hasSchematic = !!schematicBase64 && !!schematicMime;
+
   const prompt = `
     You are an Embedded Systems Engineer.
     
-    Input: An electronic schematic image/PDF.
-    User Notes: "${additionalNotes}"
-    User Defined Pin Mapping: "${pinMapping}"
+    Inputs:
+    1. User Notes: "${additionalNotes}"
+    2. User Defined Pin Mapping (Highest Priority): "${pinMapping}"
+    ${hasSchematic ? "3. Schematic Diagram (Provided)" : "3. Schematic: NOT PROVIDED (Rely on Pin Mapping)"}
     
     Task:
-    1. **Analyze Schematic & Mapping**: 
-       - FIRST, check the "User Defined Pin Mapping" provided above. Treat these connections as the absolute truth.
-       - SECOND, for any connections not specified by the user, analyze the schematic image to find how the Microcontroller is connected to peripherals (LEDs, Sensors, Buttons).
+    1. **Analyze Configuration**: 
+       - READ the "User Defined Pin Mapping". Treat this as the absolute truth for hardware connections.
+       - If no schematic is provided, use ONLY the User Pin Mapping and Notes to infer the setup.
+       - If a schematic IS provided, use it to fill in gaps, but DO NOT override the explicit User Pin Mapping.
     
     2. **Generate Firmware**: 
-       - Write a complete, ready-to-compile driver or main file to initialize these peripherals.
+       - Write a complete, ready-to-compile driver or main file to initialize the system.
        - Use the most common framework for the identified MCU (e.g., HAL for STM32, Arduino for AVR/ESP32).
-       - If no MCU is clear, assume Arduino C++ format.
+       - If the MCU type is not explicitly stated in mapping or notes, infer it from pin names (e.g., PA5 -> STM32) or default to Arduino C++.
        - **IMPORTANT**: Include comments explicitly stating which connections came from User Input vs Schematic Analysis.
     
     Output strictly valid JSON in a markdown code block (\`\`\`json\`).
@@ -503,18 +508,21 @@ export const generateFirmware = async (
     }
   `;
 
+  // Build Parts
+  const parts: any[] = [{ text: prompt }];
+  if (hasSchematic && schematicBase64 && schematicMime) {
+      parts.push({
+          inlineData: { mimeType: schematicMime, data: schematicBase64 }
+      });
+  }
+
   try {
     const response = await ai.models.generateContent({
       model: MANUAL_MODEL,
-      contents: { 
-        parts: [
-          { text: prompt },
-          { inlineData: { mimeType: schematicMime, data: schematicBase64 } }
-        ]
-      },
+      contents: { parts },
       config: {
         responseMimeType: "application/json",
-        // No Google Search needed here, mainly reasoning on the image
+        // No Google Search needed here, mainly reasoning
       }
     });
 

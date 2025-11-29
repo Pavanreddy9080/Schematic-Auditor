@@ -1,0 +1,5 @@
+{
+  "name": "Schematic Auditor AI",
+  "description": "An AI-powered engineering assistant that verifies electronic schematics against component datasheets to identify wiring errors and suggest corrections.",
+  "requestFramePermissions": []
+}
